@@ -73,7 +73,7 @@ void imprimir_cola(){ //funcion para imprimir la cola
 
 //Funcion del handler para Random
 void handler_rand(struct page_table *pt, int page){
-	printf("page fault on page #%d\n",page);
+	//printf("page fault on page #%d\n",page);
 	faltas_de_pagina++;
 	if (frame == nframes){
 		int marco_victima = lrand48()%nframes;
@@ -98,7 +98,7 @@ void handler_rand(struct page_table *pt, int page){
 
 //Funcion del handler para FIFO
 void handler_fifo(struct page_table *pt, int page){
-	printf("page fault on page #%d\n",page);
+	//printf("page fault on page #%d\n",page);
 	faltas_de_pagina++;
 	if (poner_en_cola(frame) != -1){ // si se pudo meter al cola
 		page_table_set_entry(pt, page, frame, PROT_READ|PROT_WRITE|PROT_EXEC);
@@ -123,9 +123,9 @@ void handler_fifo(struct page_table *pt, int page){
 //Funcion del handler para LRU/Custom
 
 void handler_lru(struct page_table *pt, int page){
-	printf("page fault on page #%d\n",page);
+	//printf("page fault on page #%d\n",page);
 	faltas_de_pagina++;
-	if ( frame < nframes){ 
+	if ( frame < nframes){ //para el primer ciclo
 		page_table_set_entry(pt, page, frame, PROT_READ|PROT_WRITE|PROT_EXEC);
 		disk_read(disk, page, &physmem[frame*PAGE_SIZE]);
 		cantidad_lecturas++;
@@ -135,7 +135,7 @@ void handler_lru(struct page_table *pt, int page){
 			contador_ciclos++;
 		}
 	}
-	if (contador_ciclos != 0){
+	if (contador_ciclos != 0){ //para a partir del 2ndo ciclo en adelante
 		int marco_victima = contador_marcos_victima;
 		//printf("Marco victima: %d\n",marco_victima);
 		disk_write(disk, tabla_de_frames[marco_victima], &physmem[marco_victima*PAGE_SIZE]);
@@ -224,7 +224,7 @@ int main( int argc, char *argv[] )
 
 	}
 	//impresion de datos finales
-	printf("%d %d %d %d\n", faltas_de_pagina, cantidad_lecturas, cantidad_escrituras_disco, nframes);
+	printf("Faltas de pagina: %d\nCantidad de lecturas a disco: %d\nCantidad de escrituras a disco: %d\n", faltas_de_pagina, cantidad_lecturas, cantidad_escrituras_disco);
 	
 	//liberacion del espacio ocupado por la cola
 	free(cola);
