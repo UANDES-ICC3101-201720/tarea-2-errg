@@ -14,24 +14,41 @@ how to use the page table and disk interfaces.
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-
-void page_fault_handler( struct page_table *pt, int page )
+void handler_rand( struct page_table *pt, int page)
 {
-	printf("page fault on page #%d\n",page);
-	exit(1);
+	if (page<=page_table_get_nframes(pt)-1)
+	{
+		page_table_set_entry(pt,page,page,PROT_READ|PROT_WRITE|PROT_EXEC);
+		printf("Rand: page fault on page #%d\n",page);
+	}
+	else
+	{
+		printf("a\n");
+		exit(1);
+	}
+	
 }
-
+void handler_lru( struct page_table *pt, int page )
+{
+	page_table_set_entry(pt,page,page,PROT_READ|PROT_WRITE|PROT_EXEC);
+	printf("LRU: page fault on page #%d\n",page);
+}
+void handler_fifo( struct page_table *pt, int page )
+{
+	page_table_set_entry(pt,page,page,PROT_READ|PROT_WRITE|PROT_EXEC);
+	printf("FIFO: page fault on page #%d\n",page);
+}
 int main( int argc, char *argv[] )
 {
 	if(argc!=5) {
 		/* Add 'random' replacement algorithm if the size of your group is 3 */
-		printf("use: virtmem <npages> <nframes> <lru|fifo> <sort|scan|focus>\n");
+		printf("use: virtmem <npages> <nframes> <rand|lru|fifo> <sort|scan|focus>\n");
 		return 1;
 	}
 
 	int npages = atoi(argv[1]);
 	int nframes = atoi(argv[2]);
-	const char *algorithm = argv[3];
+	const char *handler = argv[3];
 	const char *program = argv[4];
 
 	struct disk *disk = disk_open("myvirtualdisk",npages);
@@ -39,31 +56,38 @@ int main( int argc, char *argv[] )
 		fprintf(stderr,"couldn't create virtual disk: %s\n",strerror(errno));
 		return 1;
 	}
-
-
-	struct page_table *pt = page_table_create( npages, nframes, page_fault_handler );
+	struct page_table *pt;
+	//handler -a
+	if(!strcmp(handler,"rand"))
+	{
+		//random
+		pt = page_table_create( npages, nframes, handler_rand );
+	}
+	else if(!strcmp(handler,"fifo"))
+	{
+		//fifo
+		pt = page_table_create( npages, nframes, handler_fifo );
+	}
+	else if(!strcmp(handler,"lru"))
+	{
+		//custom
+		pt = page_table_create( npages, nframes, handler_lru );
+	}
+	else 
+	{
+		printf("Unknown handler\n");
+	}
+	
 	if(!pt) {
 		fprintf(stderr,"couldn't create page table: %s\n",strerror(errno));
 		return 1;
 	}
-
+	
 	char *virtmem = page_table_get_virtmem(pt);
 
 	char *physmem = page_table_get_physmem(pt);
-	//-a
-	if(!strcmp(algorithm,"rand"))
-	{
-		//random
-	}
-	else if(!strcmp(algorithm,"fifo"))
-	{
-		//fifo
-	}
-	else if(!strcmp(algorithm,"custom"))
-	{
-		//custom
-	}
-	//-p
+
+	//ejecucion de program
 	if(!strcmp(program,"sort")) {
 		sort_program(virtmem,npages*PAGE_SIZE);
 
@@ -77,7 +101,7 @@ int main( int argc, char *argv[] )
 		fprintf(stderr,"unknown program: %s\n",argv[3]);
 
 	}
-
+	page_table_print(pt);
 	page_table_delete(pt);
 	disk_close(disk);
 
