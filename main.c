@@ -17,13 +17,13 @@ how to use the page table and disk interfaces.
 
 //variables globales
 struct disk * disk;
-int * tabla_de_marcos;
+int * tabla_de_frames;
 int nframes;
 char *physmem;
 int *cola;
 int head = -1;
 int q = -1;
-int marco = 0;
+int frame = 0;
 int contador_marcos_victima = 0;
 int faltas_de_pagina = 0;
 int cantidad_lecturas = 0;
@@ -73,22 +73,22 @@ void imprimir_cola(){ //funcion para imprimir la cola
 void handler_rand(struct page_table *pt, int page){
 	printf("page fault on page #%d\n",page);
 	faltas_de_pagina++;
-	if (marco == nframes){
+	if (frame == nframes){
 		int marco_victima = lrand48()%nframes;
-		disk_write(disk, tabla_de_marcos[marco_victima], &physmem[marco_victima*PAGE_SIZE]);
+		disk_write(disk, tabla_de_frames[marco_victima], &physmem[marco_victima*PAGE_SIZE]);
 		cantidad_escrituras_disco++;
 		disk_read(disk, page, &physmem[marco_victima*PAGE_SIZE]);
 		cantidad_lecturas++;
 		page_table_set_entry(pt, page, marco_victima, PROT_READ|PROT_WRITE|PROT_EXEC);
-		page_table_set_entry(pt, tabla_de_marcos[marco_victima], marco_victima, 0);
-		tabla_de_marcos[marco_victima] = page;
+		page_table_set_entry(pt, tabla_de_frames[marco_victima], marco_victima, 0);
+		tabla_de_frames[marco_victima] = page;
 	}
 	else{
-		page_table_set_entry(pt, page, marco, PROT_READ|PROT_WRITE|PROT_EXEC);
-		disk_read(disk, page, &physmem[marco*PAGE_SIZE]);
+		page_table_set_entry(pt, page, frame, PROT_READ|PROT_WRITE|PROT_EXEC);
+		disk_read(disk, page, &physmem[frame*PAGE_SIZE]);
 		cantidad_lecturas++;
-		tabla_de_marcos[marco] = page;
-		marco++;
+		tabla_de_frames[frame] = page;
+		frame++;
 	}
 	
 }
@@ -97,22 +97,22 @@ void handler_rand(struct page_table *pt, int page){
 void handler_fifo(struct page_table *pt, int page){
 	printf("page fault on page #%d\n",page);
 	faltas_de_pagina++;
-	if (poner_en_cola(marco) != -1){ // si se pudo meter al cola
-		page_table_set_entry(pt, page, marco, PROT_READ|PROT_WRITE|PROT_EXEC);
-		disk_read(disk, page, &physmem[marco*PAGE_SIZE]);
+	if (poner_en_cola(frame) != -1){ // si se pudo meter al cola
+		page_table_set_entry(pt, page, frame, PROT_READ|PROT_WRITE|PROT_EXEC);
+		disk_read(disk, page, &physmem[frame*PAGE_SIZE]);
 		cantidad_lecturas++;
-		tabla_de_marcos[marco] = page;
-		marco++;
+		tabla_de_frames[frame] = page;
+		frame++;
 	}
 	else{
 		int marco_victima = sacar_de_cola();
-		disk_write(disk, tabla_de_marcos[marco_victima], &physmem[marco_victima*PAGE_SIZE]);
+		disk_write(disk, tabla_de_frames[marco_victima], &physmem[marco_victima*PAGE_SIZE]);
 		cantidad_escrituras_disco++;
 		disk_read(disk, page, &physmem[marco_victima*PAGE_SIZE]);
 		cantidad_lecturas++;
 		page_table_set_entry(pt, page, marco_victima, PROT_READ|PROT_WRITE|PROT_EXEC);
-		page_table_set_entry(pt, tabla_de_marcos[marco_victima], marco_victima, 0);
-		tabla_de_marcos[marco_victima] = page;
+		page_table_set_entry(pt, tabla_de_frames[marco_victima], marco_victima, 0);
+		tabla_de_frames[marco_victima] = page;
 		poner_en_cola(marco_victima);
 	}
 }
@@ -121,26 +121,26 @@ void handler_fifo(struct page_table *pt, int page){
 void handler_lru(struct page_table *pt, int page){
 	printf("page fault on page #%d\n",page);
 	faltas_de_pagina++;
-	if (marco == nframes){ 
+	if (frame == nframes){ 
 		int marco_victima = contador_marcos_victima;
-		disk_write(disk, tabla_de_marcos[marco_victima], &physmem[marco_victima*PAGE_SIZE]);
+		disk_write(disk, tabla_de_frames[marco_victima], &physmem[marco_victima*PAGE_SIZE]);
 		cantidad_escrituras_disco++;
 		disk_read(disk, page, &physmem[marco_victima*PAGE_SIZE]);
 		cantidad_lecturas++;
 		page_table_set_entry(pt, page, marco_victima, PROT_READ|PROT_WRITE|PROT_EXEC);
-		page_table_set_entry(pt, tabla_de_marcos[marco_victima], marco_victima, 0);
-		tabla_de_marcos[marco_victima] = page;
+		page_table_set_entry(pt, tabla_de_frames[marco_victima], marco_victima, 0);
+		tabla_de_frames[marco_victima] = page;
 		contador_marcos_victima++;
 		if (contador_marcos_victima == nframes){
 			contador_marcos_victima = 0;
 		}
 	}
 	else{
-		page_table_set_entry(pt, page, marco, PROT_READ|PROT_WRITE|PROT_EXEC);
-		disk_read(disk, page, &physmem[marco*PAGE_SIZE]);
+		page_table_set_entry(pt, page, frame, PROT_READ|PROT_WRITE|PROT_EXEC);
+		disk_read(disk, page, &physmem[frame*PAGE_SIZE]);
 		cantidad_lecturas++;
-		tabla_de_marcos[marco] = page;
-		marco++;
+		tabla_de_frames[frame] = page;
+		frame++;
 	}
 }
 
@@ -158,7 +158,7 @@ int main( int argc, char *argv[] )
 	const char *handler = argv[3];
 	const char *program = argv[4];
 
-	tabla_de_marcos = malloc(sizeof(int) * nframes);
+	tabla_de_frames = malloc(sizeof(int) * nframes);
 
 	disk = disk_open("myvirtualdisk",npages);
 	if(!disk) {
@@ -222,7 +222,7 @@ int main( int argc, char *argv[] )
 	free(cola);
 
 	//liberacion del espacio ocupado por la tabla de marcos
-	free(tabla_de_marcos);
+	free(tabla_de_frames);
 
 	//eliminacion de la pagina de tabla
 	page_table_delete(pt);
