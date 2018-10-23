@@ -1,6 +1,6 @@
 /*
 Main program for the virtual memory project.
-Make all of your modifications to this file.
+Maque all of your modifications to this file.
 You may add or rearrange any code or data as you need.
 The header files page_table.h and disk.h explain
 how to use the page table and disk interfaces.
@@ -22,7 +22,7 @@ int nframes;
 char *physmem;
 int *cola;
 int head = -1;
-int q = -1;
+int fin_cola = -1;
 int frame = 0;
 int contador_marcos_victima = 0;
 int faltas_de_pagina = 0;
@@ -31,15 +31,15 @@ int cantidad_escrituras_disco = 0;
 
 //funcion para poner en cola
 int poner_en_cola(int valor){
-	if (q - head == nframes - 1){ // en el caso de que esté lleno
+	if (fin_cola - head == nframes - 1){ // en el caso de que esté lleno
 		return -1;
 	}
 	else{
 		if (head == -1){
 			head = 0;
 		}
-		q++;
-		cola[q] = valor;
+		fin_cola++;
+		cola[fin_cola] = valor;
 		return valor;
 	}
 }
@@ -51,18 +51,19 @@ int sacar_de_cola(){
 	else{
 		ret = cola[head];
 		head++;
-		if (head > q){
-			head = q = -1;
+		if (head > fin_cola){
+			head = -1;
+			fin_cola = -1;
 		}
 	}
 	return ret;
 }
 //funcion para imprimir la cola
 void imprimir_cola(){ //funcion para imprimir la cola
-	if (q == -1){
+	if (fin_cola == -1){
 	}
 	else{
-		for (int i = head; i <= q; i++){
+		for (int i = head; i <= fin_cola; i++){
 			printf("%d ", cola[i]);
 		}
 		printf("\n");
@@ -118,7 +119,7 @@ void handler_fifo(struct page_table *pt, int page){
 }
 
 //Funcion del handler para LRU/Custom
-/*
+
 void handler_lru(struct page_table *pt, int page){
 	printf("page fault on page #%d\n",page);
 	faltas_de_pagina++;
@@ -144,7 +145,7 @@ void handler_lru(struct page_table *pt, int page){
 		frame++;
 	}
 }
-*/
+
 
 int main( int argc, char *argv[] )
 {
