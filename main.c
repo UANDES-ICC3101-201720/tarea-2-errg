@@ -14,29 +14,122 @@ how to use the page table and disk interfaces.
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-void handler_rand( struct page_table *pt, int page)
-{
-	if (page<=page_table_get_nframes(pt)-1)
-	{
-		page_table_set_entry(pt,page,page,PROT_READ|PROT_WRITE|PROT_EXEC);
-		printf("Rand: page fault on page #%d\n",page);
-	}
-	else
-	{
-		printf("a\n");
-		exit(1);
-	}
-	
+struct disk *disk;
+struct node *head = NULL;
+int nframes;
+//Linked lists
+struct node{
+	int frame;
+	int page;
+	struct node *next;
+};
+
+void pop_primero(struct node **head){
+	struct node * next_node = NULL;
+	next_node = (*head)->next;
+	free(*head);
+	*head = next_node;	
 }
-void handler_lru( struct page_table *pt, int page )
-{
-	page_table_set_entry(pt,page,page,PROT_READ|PROT_WRITE|PROT_EXEC);
-	printf("LRU: page fault on page #%d\n",page);
+
+void pop_indice(struct node ** head, int index){
+	struct node * current = *head;
+	struct node * temp = NULL;
+	if (index ==0){
+		pop_primero(head);
+		return;
+	}
+	for(int i = 0; i < index-1; i++){
+		current = current->next;
+	}
+	temp = current->next;
+	current->next = temp->next;
+	free(temp);
 }
+
+
+void push_lfr(struct node * head, int page, int frame){
+	struct node * current = head;
+	while(current->next != NULL){
+		current = current->next;
+	}
+	current->next = malloc(sizeof(struct node));
+	current->next->page = page;
+	current->next->frame = frame;
+	current->next->next = NULL;
+}
+
+void print_list(struct node * list){
+    struct node * current = list;
+    while (current != NULL) {
+        printf("%d\n", current->page);
+				printf("marco %i\n", current->frame);
+        current = current->next;
+    }
+}
+
 void handler_fifo( struct page_table *pt, int page )
 {
-	page_table_set_entry(pt,page,page,PROT_READ|PROT_WRITE|PROT_EXEC);
-	printf("FIFO: page fault on page #%d\n",page);
+	printf("page fault on page #%d\n",page);
+	struct node *node = head;
+	int using_frame = -1;
+	while(node != NULL && using_frame == -1){
+		if(node->page == -1){
+			using_frame = node->frame;
+			node->page = page;
+		}
+		node = node->next;
+	}
+	char * physical_pointer;
+	physical_pointer = page_table_get_physmem(pt);
+
+	if(using_frame == -1){
+		node = head;
+		int old_page = node->page;
+		using_frame = node->frame;
+		disk_write(disk, old_page, &physical_pointer[using_frame * PAGE_SIZE]);
+		page_table_set_entry(pt, old_page, using_frame, 0);
+		push_lfr(head, page, using_frame);
+		pop_primero(&head);
+	}
+	if(using_frame != -1){
+		page_table_set_entry(pt, page, using_frame, PROT_READ|PROT_WRITE);
+		disk_read(disk, page, &physical_pointer[using_frame * PAGE_SIZE]);
+	}
+}
+void handler_rand( struct page_table *pt, int page )
+{
+	printf("page fault on page #%d\n",page);
+	struct node *node = head;
+	int using_frame = -1;
+	char * physical_pointer;
+	physical_pointer = page_table_get_physmem(pt);
+
+	if(using_frame == -1){
+		int ran_num = lrand48()%nframes;
+		int ran_num2 = ran_num;
+		while(ran_num > 0){
+			node = node->next;
+			ran_num--;
+		}
+		using_frame = node->frame;
+		int old_page = node->page;
+		if(old_page != -1){
+			disk_write(disk, old_page, &physical_pointer[using_frame * PAGE_SIZE]);
+			page_table_set_entry(pt, old_page, using_frame, 0);
+		}
+		pop_indice(&head, ran_num2);
+		push_lfr(head, page, using_frame);
+	}
+	if(using_frame != -1){
+		page_table_set_entry(pt, page, using_frame, PROT_READ|PROT_WRITE);
+		disk_read(disk, page, &physical_pointer[using_frame * PAGE_SIZE]);
+	}
+}
+
+void handler_lru( struct page_table *pt, int page )
+{
+	printf("page fault on page #%d\n",page);
+	exit(1);
 }
 int main( int argc, char *argv[] )
 {
@@ -47,14 +140,22 @@ int main( int argc, char *argv[] )
 	}
 
 	int npages = atoi(argv[1]);
-	int nframes = atoi(argv[2]);
+	nframes = atoi(argv[2]);
 	const char *handler = argv[3];
 	const char *program = argv[4];
 
-	struct disk *disk = disk_open("myvirtualdisk",npages);
+	disk = disk_open("myvirtualdisk",npages);
 	if(!disk) {
 		fprintf(stderr,"couldn't create virtual disk: %s\n",strerror(errno));
 		return 1;
+	}
+	head = malloc(sizeof(struct node));
+	head->frame = 0;
+	head->page = -1;
+	head->next = NULL;
+
+	for(int i = 1; i<nframes; i++){
+		push_lfr(head, -1, i);
 	}
 	struct page_table *pt;
 	//handler -a
@@ -101,7 +202,7 @@ int main( int argc, char *argv[] )
 		fprintf(stderr,"unknown program: %s\n",argv[3]);
 
 	}
-	page_table_print(pt);
+
 	page_table_delete(pt);
 	disk_close(disk);
 
