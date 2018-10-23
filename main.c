@@ -25,6 +25,7 @@ int head = -1;
 int fin_cola = -1;
 int frame = 0;
 int contador_marcos_victima = 0;
+int contador_ciclos = 0;
 int faltas_de_pagina = 0;
 int cantidad_lecturas = 0;
 int cantidad_escrituras_disco = 0;
@@ -76,6 +77,7 @@ void handler_rand(struct page_table *pt, int page){
 	faltas_de_pagina++;
 	if (frame == nframes){
 		int marco_victima = lrand48()%nframes;
+		//printf("Marco victima: %d\n",marco_victima);		
 		disk_write(disk, tabla_de_frames[marco_victima], &physmem[marco_victima*PAGE_SIZE]);
 		cantidad_escrituras_disco++;
 		disk_read(disk, page, &physmem[marco_victima*PAGE_SIZE]);
@@ -123,8 +125,19 @@ void handler_fifo(struct page_table *pt, int page){
 void handler_lru(struct page_table *pt, int page){
 	printf("page fault on page #%d\n",page);
 	faltas_de_pagina++;
-	if (frame == nframes){ 
+	if ( frame < nframes){ 
+		page_table_set_entry(pt, page, frame, PROT_READ|PROT_WRITE|PROT_EXEC);
+		disk_read(disk, page, &physmem[frame*PAGE_SIZE]);
+		cantidad_lecturas++;
+		tabla_de_frames[frame] = page;
+		frame++;
+		if (frame == nframes){
+			contador_ciclos++;
+		}
+	}
+	if (contador_ciclos != 0){
 		int marco_victima = contador_marcos_victima;
+		//printf("Marco victima: %d\n",marco_victima);
 		disk_write(disk, tabla_de_frames[marco_victima], &physmem[marco_victima*PAGE_SIZE]);
 		cantidad_escrituras_disco++;
 		disk_read(disk, page, &physmem[marco_victima*PAGE_SIZE]);
@@ -136,13 +149,6 @@ void handler_lru(struct page_table *pt, int page){
 		if (contador_marcos_victima == nframes){
 			contador_marcos_victima = 0;
 		}
-	}
-	else{
-		page_table_set_entry(pt, page, frame, PROT_READ|PROT_WRITE|PROT_EXEC);
-		disk_read(disk, page, &physmem[frame*PAGE_SIZE]);
-		cantidad_lecturas++;
-		tabla_de_frames[frame] = page;
-		frame++;
 	}
 }
 
