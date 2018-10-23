@@ -118,6 +118,7 @@ void handler_fifo(struct page_table *pt, int page){
 }
 
 //Funcion del handler para LRU/Custom
+/*
 void handler_lru(struct page_table *pt, int page){
 	printf("page fault on page #%d\n",page);
 	faltas_de_pagina++;
@@ -143,7 +144,7 @@ void handler_lru(struct page_table *pt, int page){
 		frame++;
 	}
 }
-
+*/
 
 int main( int argc, char *argv[] )
 {
