@@ -14,123 +14,134 @@ how to use the page table and disk interfaces.
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-struct disk *disk;
-struct node *head = NULL;
+
+//variables globales
+struct disk * disk;
+int * frame_table;
 int nframes;
-//Linked lists
-struct node{
-	int frame;
-	int page;
-	struct node *next;
-};
+char *physmem;
+int *cola;
+int head = -1;
+int q = -1;
+int marco = 0;
+int cont_marco_vic = 0;
+int faltas_de_pagina = 0;
+int cantidad_lecturas = 0;
+int cantidad_escrituras_disco = 0;
 
-void pop_primero(struct node **head){
-	struct node * next_node = NULL;
-	next_node = (*head)->next;
-	free(*head);
-	*head = next_node;	
-}
-
-void pop_indice(struct node ** head, int index){
-	struct node * current = *head;
-	struct node * temp = NULL;
-	if (index ==0){
-		pop_primero(head);
-		return;
+//funcion para poner en cola
+int poner_en_cola(int valor){
+	if (q - head == nframes - 1){ // en el caso de que esté lleno
+		return -1;
 	}
-	for(int i = 0; i < index-1; i++){
-		current = current->next;
-	}
-	temp = current->next;
-	current->next = temp->next;
-	free(temp);
-}
-
-
-void push_lfr(struct node * head, int page, int frame){
-	struct node * current = head;
-	while(current->next != NULL){
-		current = current->next;
-	}
-	current->next = malloc(sizeof(struct node));
-	current->next->page = page;
-	current->next->frame = frame;
-	current->next->next = NULL;
-}
-
-void print_list(struct node * list){
-    struct node * current = list;
-    while (current != NULL) {
-        printf("%d\n", current->page);
-				printf("marco %i\n", current->frame);
-        current = current->next;
-    }
-}
-
-void handler_fifo( struct page_table *pt, int page )
-{
-	printf("page fault on page #%d\n",page);
-	struct node *node = head;
-	int using_frame = -1;
-	while(node != NULL && using_frame == -1){
-		if(node->page == -1){
-			using_frame = node->frame;
-			node->page = page;
+	else{
+		if (head == -1){
+			head = 0;
 		}
-		node = node->next;
-	}
-	char * physical_pointer;
-	physical_pointer = page_table_get_physmem(pt);
-
-	if(using_frame == -1){
-		node = head;
-		int old_page = node->page;
-		using_frame = node->frame;
-		disk_write(disk, old_page, &physical_pointer[using_frame * PAGE_SIZE]);
-		page_table_set_entry(pt, old_page, using_frame, 0);
-		push_lfr(head, page, using_frame);
-		pop_primero(&head);
-	}
-	if(using_frame != -1){
-		page_table_set_entry(pt, page, using_frame, PROT_READ|PROT_WRITE);
-		disk_read(disk, page, &physical_pointer[using_frame * PAGE_SIZE]);
+		q++;
+		cola[q] = valor;
+		return valor;
 	}
 }
-void handler_rand( struct page_table *pt, int page )
-{
-	printf("page fault on page #%d\n",page);
-	struct node *node = head;
-	int using_frame = -1;
-	char * physical_pointer;
-	physical_pointer = page_table_get_physmem(pt);
-
-	if(using_frame == -1){
-		int ran_num = lrand48()%nframes;
-		int ran_num2 = ran_num;
-		while(ran_num > 0){
-			node = node->next;
-			ran_num--;
+//funcion para sacar de cola
+int sacar_de_cola(){
+	int ret = -1;
+	if (head == -1){ // en el caso de que esté vacio
+	}
+	else{
+		ret = cola[head];
+		head++;
+		if (head > q){
+			head = q = -1;
 		}
-		using_frame = node->frame;
-		int old_page = node->page;
-		if(old_page != -1){
-			disk_write(disk, old_page, &physical_pointer[using_frame * PAGE_SIZE]);
-			page_table_set_entry(pt, old_page, using_frame, 0);
-		}
-		pop_indice(&head, ran_num2);
-		push_lfr(head, page, using_frame);
 	}
-	if(using_frame != -1){
-		page_table_set_entry(pt, page, using_frame, PROT_READ|PROT_WRITE);
-		disk_read(disk, page, &physical_pointer[using_frame * PAGE_SIZE]);
+	return ret;
+}
+//funcion para imprimir la cola
+void imprimir_cola(){ //funcion para imprimir la cola
+	if (q == -1){
+	}
+	else{
+		for (int i = head; i <= q; i++){
+			printf("%d ", cola[i]);
+		}
+		printf("\n");
 	}
 }
 
-void handler_lru( struct page_table *pt, int page )
-{
-	printf("page fault on page #%d\n",page);
-	exit(1);
+//Funcion del handler para Random
+void handler_rand(struct page_table *pt, int page){
+	faltas_de_pagina++;
+	if (marco == nframes){
+		int marco_victima = lrand48()%nframes;
+		disk_write(disk, frame_table[marco_victima], &physmem[marco_victima*PAGE_SIZE]);
+		cantidad_escrituras_disco++;
+		disk_read(disk, page, &physmem[marco_victima*PAGE_SIZE]);
+		cantidad_lecturas++;
+		page_table_set_entry(pt, page, marco_victima, PROT_READ|PROT_WRITE|PROT_EXEC);
+		page_table_set_entry(pt, frame_table[marco_victima], marco_victima, 0);
+		frame_table[marco_victima] = page;
+	}
+	else{
+		page_table_set_entry(pt, page, marco, PROT_READ|PROT_WRITE|PROT_EXEC);
+		disk_read(disk, page, &physmem[marco*PAGE_SIZE]);
+		cantidad_lecturas++;
+		frame_table[marco] = page;
+		marco++;
+	}
+	
 }
+
+//Funcion del handler para FIFO
+void handler_fifo(struct page_table *pt, int page){
+	faltas_de_pagina++;
+	if (poner_en_cola(marco) != -1){ // si se pudo meter al cola
+		page_table_set_entry(pt, page, marco, PROT_READ|PROT_WRITE|PROT_EXEC);
+		disk_read(disk, page, &physmem[marco*PAGE_SIZE]);
+		cantidad_lecturas++;
+		frame_table[marco] = page;
+		marco++;
+	}
+	else{
+		int marco_victima = sacar_de_cola();
+		disk_write(disk, frame_table[marco_victima], &physmem[marco_victima*PAGE_SIZE]);
+		cantidad_escrituras_disco++;
+		disk_read(disk, page, &physmem[marco_victima*PAGE_SIZE]);
+		cantidad_lecturas++;
+		page_table_set_entry(pt, page, marco_victima, PROT_READ|PROT_WRITE|PROT_EXEC);
+		page_table_set_entry(pt, frame_table[marco_victima], marco_victima, 0);
+		frame_table[marco_victima] = page;
+		poner_en_cola(marco_victima);
+	}
+}
+
+//Funcion del handler para LRU/Custom
+void handler_lru(struct page_table *pt, int page){
+	faltas_de_pagina++;
+	if (marco == nframes){ 
+		int marco_victima = cont_marco_vic;
+		disk_write(disk, frame_table[marco_victima], &physmem[marco_victima*PAGE_SIZE]);
+		cantidad_escrituras_disco++;
+		disk_read(disk, page, &physmem[marco_victima*PAGE_SIZE]);
+		cantidad_lecturas++;
+		page_table_set_entry(pt, page, marco_victima, PROT_READ|PROT_WRITE|PROT_EXEC);
+		page_table_set_entry(pt, frame_table[marco_victima], marco_victima, 0);
+		frame_table[marco_victima] = page;
+		cont_marco_vic++;
+		if (cont_marco_vic == nframes){
+			cont_marco_vic = 0;
+		}
+	}
+	else{
+		page_table_set_entry(pt, page, marco, PROT_READ|PROT_WRITE|PROT_EXEC);
+		disk_read(disk, page, &physmem[marco*PAGE_SIZE]);
+		cantidad_lecturas++;
+		frame_table[marco] = page;
+		marco++;
+	}
+}
+
+
 int main( int argc, char *argv[] )
 {
 	if(argc!=5) {
@@ -144,38 +155,33 @@ int main( int argc, char *argv[] )
 	const char *handler = argv[3];
 	const char *program = argv[4];
 
+	frame_table = malloc(sizeof(int) * nframes);
+
 	disk = disk_open("myvirtualdisk",npages);
 	if(!disk) {
 		fprintf(stderr,"couldn't create virtual disk: %s\n",strerror(errno));
 		return 1;
 	}
-	head = malloc(sizeof(struct node));
-	head->frame = 0;
-	head->page = -1;
-	head->next = NULL;
-
-	for(int i = 1; i<nframes; i++){
-		push_lfr(head, -1, i);
-	}
 	struct page_table *pt;
 	//handler -a
-	if(!strcmp(handler,"rand"))
+	if (strcmp(handler, "rand") == 0)
 	{
-		//random
+		//crear tabla de pagina random
 		pt = page_table_create( npages, nframes, handler_rand );
 	}
-	else if(!strcmp(handler,"fifo"))
+	else if (strcmp(handler, "fifo") == 0)
 	{
-		//fifo
+		//crear tabla de pagina fifo
 		pt = page_table_create( npages, nframes, handler_fifo );
 	}
-	else if(!strcmp(handler,"lru"))
+	else if (strcmp(handler, "lru") == 0)
 	{
-		//custom
+		//crear tabla de pagina lru
 		pt = page_table_create( npages, nframes, handler_lru );
 	}
 	else 
 	{
+		//en el caso de que inserte un handler no valido
 		printf("Unknown handler\n");
 	}
 	
@@ -184,11 +190,14 @@ int main( int argc, char *argv[] )
 		return 1;
 	}
 	
+	//asignacion de la memoria virtual
 	char *virtmem = page_table_get_virtmem(pt);
+	//asignacion de la memoria fisica
+	physmem = page_table_get_physmem(pt);
 
-	char *physmem = page_table_get_physmem(pt);
+	cola = malloc(sizeof(int)*10000);
 
-	//ejecucion de program
+	//ejecucion de program -p
 	if(!strcmp(program,"sort")) {
 		sort_program(virtmem,npages*PAGE_SIZE);
 
@@ -202,8 +211,19 @@ int main( int argc, char *argv[] )
 		fprintf(stderr,"unknown program: %s\n",argv[3]);
 
 	}
+	//impresion de datos finales
+	printf("%d %d %d %d\n", faltas_de_pagina, cantidad_lecturas, cantidad_escrituras_disco, nframes);
+	
+	//liberacion del espacio ocupado por la cola
+	free(cola);
 
+	//liberacion del espacio ocupado por la tabla de marcos
+	free(frame_table);
+
+	//eliminacion de la pagina de tabla
 	page_table_delete(pt);
+
+	//cierre de disco
 	disk_close(disk);
 
 	return 0;
